@@ -1,5 +1,6 @@
 ## !/usr/bin/env python
 
+from abc import abstractmethod
 import argparse
 import configparser
 import logging
@@ -26,6 +27,7 @@ class DataLost(Exception):
     """Not enough redundancy in the system, data is lost. We raise this exception to stop the simulation."""
 
     pass
+    # raise NotImplementedError
 
 
 class Backup(Simulation):
@@ -223,22 +225,44 @@ class Node:
         for block_id, (held_locally, peer) in enumerate(
             zip(self.local_blocks, self.backed_up_blocks)
         ):
-            if not ... and peer is not None and ... and ... is None:
-                ...
-                return  # we are done in this case
+            if (
+                not held_locally
+                and peer is not None
+                and peer.online
+                and peer.current_upload is None
+            ):
+                sim.schedule_transfer(
+                    uploader=peer,
+                    downloader=self,
+                    block_id=block_id,
+                    restore=True,
+                )
+                # we are done in this case
+                return
 
         # try to back up a block for a remote node
         for peer in sim.nodes:
             if (
+                # ? you are not remote node yourself
                 peer is not self
-                and ...
-                and ... is None
-                and peer not in ...
-                and self.free_space >= ...
+                # ? peer is online
+                and peer.online
+                # ? peer is not uploading
+                and peer.current_upload is None
+                # ? If I have already backed up a (THAT) block of peer, then I don't need to back up another one
+                and peer not in self.remote_blocks_held.keys()
+                # ? peer has enough space
+                and self.free_space >= peer.block_size
             ):
                 block_id = peer.find_block_to_back_up()
                 if block_id is not None:
-                    ...
+                    # ? You chedule the transfer of a block that you never had from peer to yourself
+                    sim.schedule_transfer(
+                        block_id=block_id,
+                        uploader=peer,
+                        downloader=self,
+                        restore=False,
+                    )
                     return
 
     def __hash__(self):
@@ -259,10 +283,13 @@ class NodeEvent(Event):
     """An event regarding a node. Carries the identifier, i.e., the node's index in `Backup.nodes_config`"""
 
     node: Node
-
+    # ? This could be unnecessary because we already have an abstract method in Event superclass
+    # ? Overriding the abstract method in Event superclass
+    @abstractmethod
     def process(self, sim: Simulation):
         """Must be implemented by subclasses."""
-        raise NotImplementedError
+        pass
+        # raise NotImplementedError
 
 
 class Online(NodeEvent):
@@ -275,9 +302,9 @@ class Online(NodeEvent):
         node.online = True
         # schedule next upload and download
         node.schedule_next_upload(sim)
-        ...
+        node.schedule_next_download(sim)
         # schedule the next offline event
-        ...
+        sim.schedule(exp_rv(node.average_lifetime), Offline(node))
 
 
 class Recover(Online):
@@ -294,9 +321,11 @@ class Recover(Online):
 class Disconnection(NodeEvent):
     """Base class for both Offline and Fail, events that make a node disconnect."""
 
+    @abstractmethod
     def process(self, sim: Simulation):
         """Must be implemented by subclasses."""
-        raise NotImplementedError
+        pass
+        # raise NotImplementedError
 
     def disconnect(self):
         node = self.node
@@ -338,14 +367,16 @@ class Fail(Disconnection):
         self.disconnect()
         node = self.node
         node.failed = True
-        node.local_blocks = [False] * node.n  # lose all local data
-        # lose all remote data
+        # lose all local data
+        node.local_blocks = [False] * node.n
+        # lose all remote data that you backed up
         for owner, block_id in node.remote_blocks_held.items():
             owner.backed_up_blocks[block_id] = None
+            # this node may want to back up the missing block
+            # ? Why do you need to schedule the next upload of the owner of the block that you lost
+            # ?(You should not schedule as a node work for other nodes in Fail event)
             if owner.online and owner.current_upload is None:
-                owner.schedule_next_upload(
-                    sim
-                )  # this node may want to back up the missing block
+                owner.schedule_next_upload(sim=sim)
         node.remote_blocks_held.clear()
         # schedule the next online and recover events
         recover_time = exp_rv(node.average_recover_time)
@@ -368,8 +399,9 @@ class TransferComplete(Event):
         sim.log_info(
             f"{self.__class__.__name__} from {self.uploader} to {self.downloader}"
         )
+        # this transfer was canceled, so ignore this event
         if self.canceled:
-            return  # this transfer was canceled, so ignore this event
+            return
         uploader, downloader = self.uploader, self.downloader
         assert uploader.online and downloader.online
         self.update_block_state()
@@ -383,15 +415,18 @@ class TransferComplete(Event):
                 f"{len(node.remote_blocks_held)} remote blocks held"
             )
 
+    @abstractmethod
     def update_block_state(self):
         """Needs to be specified by the subclasses, `BackupComplete` and `DownloadComplete`."""
-        raise NotImplementedError
+        # raise NotImplementedError
+        pass
 
 
 class BlockBackupComplete(TransferComplete):
     def update_block_state(self):
         owner, peer = self.uploader, self.downloader
         peer.free_space -= owner.block_size
+        # ? Why do you check it twice as in schedule download/upload?
         assert peer.free_space >= 0
         owner.backed_up_blocks[self.block_id] = peer
         peer.remote_blocks_held[owner] = self.block_id
@@ -401,10 +436,13 @@ class BlockRestoreComplete(TransferComplete):
     def update_block_state(self):
         owner = self.downloader
         owner.local_blocks[self.block_id] = True
-        if (
-            sum(owner.local_blocks) == owner.k
-        ):  # we have exactly k local blocks, we have all of them then
-            ...
+        # we have exactly k local blocks, we have all of them then
+        # is it the progress bar?
+        # ? If the owner has all the blocks of his,
+        # ? then he does not neet to shcedule the next download
+        if sum(owner.local_blocks) == owner.k:
+            return "Completed full restore of backup"
+            # owner.schedule_next_download(sim=sim)
 
 
 def main():
