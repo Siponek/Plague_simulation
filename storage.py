@@ -314,6 +314,9 @@ class Recover(Online):
         node = self.node
         sim.log_info(f"{node} recovers")
         node.failed = False
+        self.node.free_space = (
+            self.node.storage_size - self.node.block_size * self.node.n
+        )
         super().process(sim)
         sim.schedule(exp_rv(node.average_lifetime), Fail(node))
 
