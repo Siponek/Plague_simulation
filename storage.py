@@ -441,7 +441,8 @@ class BlockRestoreComplete(TransferComplete):
         # ? If the owner has all the blocks of his,
         # ? then he does not neet to shcedule the next download
         if sum(owner.local_blocks) == owner.k:
-            return "Completed full restore of backup"
+            return
+            # return "Completed full restore of backup"
             # owner.schedule_next_download(sim=sim)
 
 
