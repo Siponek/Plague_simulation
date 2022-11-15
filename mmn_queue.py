@@ -3,7 +3,7 @@
 import argparse
 import csv
 import collections
-from random import expovariate
+from random import expovariate, choice
 
 from discrete_event_sim import Simulation, Event
 
@@ -19,20 +19,24 @@ from discrete_event_sim import Simulation, Event
 class MMN(Simulation):
     def __init__(self, lambd, mu, n):
         # extend this to make it work for multiple queues
-        if n != 1:
-            raise NotImplementedError
+        # if n != 1:
+        #     raise NotImplementedError
 
         super().__init__()
-        self.running = None  # if not None, the id of the running job
-        self.queue = collections.deque()  # FIFO queue of the system
-        self.arrivals = {}  # dictionary mapping job id to arrival time
-        self.completions = {}  # dictionary mapping job id to completion time
+        # if not None, the id of the running job
+        self.running: list = [None for _ in range(n)]
+        # FIFO queue of the system
+        self.queue = [collections.deque() for _ in range(n)]
+        # dictionary mapping job id to arrival time
+        self.arrivals = {}
+        # dictionary mapping job id to completion time
+        self.completions = {}
         self.lambd = lambd
         self.n = n
         self.mu = mu
         self.arrival_rate = lambd / n
         self.completion_rate = mu / n
-        self.schedule(expovariate(lambd), Arrival(0))
+        self.schedule(expovariate(lambd=lambd), Arrival(0))
 
     def schedule_arrival(self, job_id):
         # schedule the arrival following an exponential distribution, to compensate the number of queues the arrival
@@ -46,7 +50,17 @@ class MMN(Simulation):
 
     @property
     def queue_len(self):
-        return (self.running is None) + len(self.queue)
+        # todo: this is not correct, it should be the sum of the queue lengths
+        # todo it needs to return list of length of queues
+        return [True for x in self.running if x is None] + [
+            len(x) for x in self.queue
+        ]
+        # return (self.running[0] is None) + len(self.queue)
+
+
+class MMN_queue(MMN):
+    def __init__(self, lambd: float, mu: float, n: int):
+        super().__init__(lambd, mu, n)
 
 
 class MM1(MMN):
@@ -63,12 +77,13 @@ class Arrival(Event):
         arrival_time: float = sim.time_of_simulation
         sim.arrivals[self.id] = arrival_time
         # if there is no running job, assign the incoming one and schedule its completion
-        if sim.running is None:
-            sim.running = self.id
-            sim.schedule_completion(sim.running)
+        temp_queue = choice(range(0, sim.n))
+        if sim.running[temp_queue] is None:
+            sim.running[temp_queue] = self.id
+            sim.schedule_completion(sim.running[temp_queue])
         # otherwise put the job into the queue
         else:
-            sim.queue.append(self.id)
+            sim.queue[temp_queue].append(self.id)
 
         # schedule the arrival of the next job
         sim.schedule_arrival(self.id + 1)
@@ -80,18 +95,32 @@ class Completion(Event):
         self.id = job_id
 
     def process(self, sim: MMN):
-        assert sim.running is not None
+        # assert if the job is not currently running
+        # print("Completion of job: ", self.id)
+        # print("Running jobs: ", sim.running)
+        assert self.id in sim.running
         # set the completion time of the running job
-        sim.completions[sim.running] = sim.time_of_simulation
+
+        # * This is the index inside of the list of running jobs for the current running job
+        temp_idx: int = self.retr_id_from_running(sim)
+        sim.completions[sim.running[temp_idx]] = sim.time_of_simulation
         # if the queue is not empty
-        if len(sim.queue) > 0:
+        if len(sim.queue[temp_idx]) > 0:
             # get a job from the queue
             # ? This cannot be sim.running because of priority of timming
-            temp_job_id: int = sim.queue.popleft()
+            _temp_job_id: int = sim.queue[temp_idx].popleft()
+            # Putn the job into execution
+            sim.running[temp_idx] = _temp_job_id
             # schedule its completion
-            sim.schedule_completion(temp_job_id)
+            sim.schedule_completion(_temp_job_id)
         else:
-            sim.running = None
+            sim.running[temp_idx] = None
+
+    def retr_id_from_running(self, sim: MMN):
+        # get the index of the running job
+        for i in range(len(sim.running)):
+            if sim.running[i] == self.id:
+                return i
 
 
 def main():
@@ -99,7 +128,7 @@ def main():
     parser.add_argument("--lambd", type=float, default=0.7)
     parser.add_argument("--mu", type=float, default=1)
     parser.add_argument("--max-t", type=float, default=1_000_000)
-    parser.add_argument("--n", type=int, default=1)
+    parser.add_argument("--n", type=int, default=12)
     parser.add_argument(
         "--csv", required=False, help="CSV file in  store results"
     )
