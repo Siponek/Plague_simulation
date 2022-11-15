@@ -34,7 +34,7 @@ class Event:
 class Simulation:
     """Subclass this to represent the simulation state.
 
-    Here, self.t is the simulated time and self.events is the event queue.
+    Here, self.time_of_simulation is the simulated time and self.events is the event queue.
     """
 
     def __init__(self) -> None:
