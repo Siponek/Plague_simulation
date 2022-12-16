@@ -31,7 +31,8 @@ def parse_mustang(path=None):
         with urlopen(MUSTANG_URL) as url, NamedTemporaryFile(delete=False) as tmp:
             print(f"Downloading Mustang dataset (temporary file: {tmp.name})...", end=' ', flush=True)
             tmp.write(url.read())
-            os.rename(tmp.name, path)
+            path = tmp.name
+            # os.rename(tmp.name, path)
         print("done.")
     with gzip.open(path, 'rt', newline='') as f:
         result = []
