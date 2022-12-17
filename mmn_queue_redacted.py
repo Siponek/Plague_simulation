@@ -3,7 +3,8 @@
 import argparse
 import csv
 from random import expovariate, randrange, sample, seed, weibullvariate
-from discrete_event_sim_redacted import Simulation, Event
+from discrete_event_sim import Simulation, Event
+
 # from weibull import weibull_generator
 import workloads
 from matplotlib import pyplot as plt
@@ -14,15 +15,16 @@ from matplotlib import pyplot as plt
 # gen = weibull_generator(shape, mean)
 #
 # and then call gen() every time you need a random variable
-from dc_assignments.workloads import weibull_generator
+from workloads import weibull_generator
 
 
 class MMN(Simulation):
-
     def __init__(self, lambd, mu, n, shape):
 
         super().__init__()
-        self.running = [None for _ in range(n)]  # if not None, the id of the running job
+        self.running = [
+            None for _ in range(n)
+        ]  # if not None, the id of the running job
 
         self.queue = [[] for _ in range(n)]  # FIFO queue of the system
 
@@ -46,13 +48,21 @@ class MMN(Simulation):
         # schedule the arrival following an exponential distribution, to compensate the number of queues the arrival
         # time should depend also on "n"
         # job_t = expovariate(self.lambd * self.n)
-        job_t = self.arrival_gen() if self.arrival_gen is not None else expovariate(self.lambd * self.n)
+        job_t = (
+            self.arrival_gen()
+            if self.arrival_gen is not None
+            else expovariate(self.lambd * self.n)
+        )
         self.schedule(job_t, Arrival(job_id))
 
     def schedule_completion(self, job_id):
         # schedule the time of the completion event
         # job_t = expovariate(self.mu)
-        job_t = self.completion_gen() if self.completion_gen is not None else expovariate(self.mu)
+        job_t = (
+            self.completion_gen()
+            if self.completion_gen is not None
+            else expovariate(self.mu)
+        )
         self.schedule(job_t, Completion(job_id))
 
     # return the index of the queue belonging to the sample
@@ -75,7 +85,6 @@ class MMN(Simulation):
 
 
 class MMNImpl(MMN):
-
     def __init__(self, lambd, mu, n, d, shape):
 
         # not using supermarket scheduling
@@ -91,7 +100,7 @@ class MMNImpl(MMN):
         self.sample_dim = d  # sample dimension for supermarket scheduling
         self.queue_len_distr = {}  # mapping time to list of queues' lengths
         self.schedule_arrival(0)
-        self.schedule(0, Log(1))   # logging initial queue situation
+        self.schedule(0, Log(1))  # logging initial queue situation
 
     # returns the index of the server that is executing job_id if it is found, None otherwise
     def get_job_executor(self, job_id):
@@ -113,30 +122,44 @@ class MMNImpl(MMN):
         self.run(max_t)
 
         completions = self.completions
-        W = (sum(completions.values()) - sum(self.arrivals[job_id]
-                                             for job_id in completions)) / len(completions)
+        W = (
+            sum(completions.values())
+            - sum(self.arrivals[job_id] for job_id in completions)
+        ) / len(completions)
 
         if self.supermarket_mode:
-            plot_supermarket_graphs(self.queue_len_distr, self.n, self.sample_dim,
-                                    self.lambd)
+            plot_supermarket_graphs(
+                self.queue_len_distr, self.n, self.sample_dim, self.lambd
+            )
         print(f"Average time spent in the system by a job: {W}")
         val = 1 / (self.mu * (1 - (self.lambd / self.mu)))
         print(f"Theoretical expectation for random server choice: {val}")
 
         if file is not None:
-            with open(file, 'a', newline='') as f:
+            with open(file, "a", newline="") as f:
                 writer = csv.writer(f)
-                writer.writerow([self.lambd, self.mu, max_t, W, self.sample_dim, self.n, shape])
+                writer.writerow(
+                    [
+                        self.lambd,
+                        self.mu,
+                        max_t,
+                        W,
+                        self.sample_dim,
+                        self.n,
+                        shape,
+                    ]
+                )
 
 
 # simulation for round robin scheduling
 class MMNRoundRobinSim:
-
     def __init__(self, lambd, mu, n, d, max_t, shape, file):
 
         # change first parameter in order to vary the shape of weibull distribution
         generator_cd = weibull_generator(shape, 1 / mu) if shape > 0 else None
-        generator_ad = weibull_generator(shape, 1 / (n * lambd)) if shape > 0 else None
+        generator_ad = (
+            weibull_generator(shape, 1 / (n * lambd)) if shape > 0 else None
+        )
         self.quantums = []  # quantums to be tested
 
         # istances of round robin simulation, mapped through assigned quantum of time
@@ -148,8 +171,12 @@ class MMNRoundRobinSim:
         init_t = 0
         ji = 0
         while init_t < max_t:
-            #self.arrivals_delay[ji] = expovariate(n * lambd)
-            self.arrivals_delay[ji] = generator_ad() if generator_ad is not None else expovariate(n * lambd)
+            # self.arrivals_delay[ji] = expovariate(n * lambd)
+            self.arrivals_delay[ji] = (
+                generator_ad()
+                if generator_ad is not None
+                else expovariate(n * lambd)
+            )
             init_t += self.arrivals_delay[ji]
             ji = ji + 1
 
@@ -157,8 +184,10 @@ class MMNRoundRobinSim:
 
         self.completion_delay = {}
         for job_id in list(self.arrivals_delay.keys()):
-            #self.completion_delay[job_id] = expovariate(mu)
-            self.completion_delay[job_id] = generator_cd() if generator_cd is not None else expovariate(mu)
+            # self.completion_delay[job_id] = expovariate(mu)
+            self.completion_delay[job_id] = (
+                generator_cd() if generator_cd is not None else expovariate(mu)
+            )
 
         max_q = max(self.completion_delay.values()) + 1.0
         self.quantums.append(max_q)
@@ -177,26 +206,58 @@ class MMNRoundRobinSim:
 
         # multiple runs of round robin scheduling with the generated quantums
         for quantum in self.quantums:
-            self.systems[quantum] = MMNRoundRobin(lambd, mu, n, quantum, d, self.arrivals_delay, self.completion_delay)
+            self.systems[quantum] = MMNRoundRobin(
+                lambd,
+                mu,
+                n,
+                quantum,
+                d,
+                self.arrivals_delay,
+                self.completion_delay,
+            )
             self.systems[quantum].run(max_t)
             completions = self.systems[quantum].completions
             # calculating average time spent in the system by a job
-            W = (sum(completions.values()) - sum(self.systems[quantum].arrivals[job_id]
-                                                 for job_id in completions)) / len(completions)
-            print(f"{quantum} => Average time spent in the system by a job: {W}")
+            W = (
+                sum(completions.values())
+                - sum(
+                    self.systems[quantum].arrivals[job_id]
+                    for job_id in completions
+                )
+            ) / len(completions)
+            print(
+                f"{quantum} => Average time spent in the system by a job: {W}"
+            )
             quantum_times[quantum] = W
 
-        title = "Round Robin scheduling with " + str(n) + " queues, lambda = " + str(lambd) + " e mu = " + str(mu)
+        title = (
+            "Round Robin scheduling with "
+            + str(n)
+            + " queues, lambda = "
+            + str(lambd)
+            + " e mu = "
+            + str(mu)
+        )
         # plotting
         self.plot_time_quantum(quantum_times, title)
 
         if file is not None:
-            with open(file, 'a', newline='') as f:
+            with open(file, "a", newline="") as f:
                 writer = csv.writer(f)
 
                 for system in self.systems.values():
-                    writer.writerow([lambd, mu, max_t, system.quantum, d, n,
-                                     quantum_times[system.quantum], shape])
+                    writer.writerow(
+                        [
+                            lambd,
+                            mu,
+                            max_t,
+                            system.quantum,
+                            d,
+                            n,
+                            quantum_times[system.quantum],
+                            shape,
+                        ]
+                    )
 
     def plot_time_quantum(self, quantum_times, title):
         quantums = quantum_times.keys()
@@ -210,7 +271,6 @@ class MMNRoundRobinSim:
 
 
 class MMNRoundRobin(MMN):
-
     def __init__(self, lambd, mu, n, quantum, d, ad, cd):
         # distinguish if we are using supermarket decision or not
         if d == -1 and n > 0:
@@ -239,7 +299,9 @@ class MMNRoundRobin(MMN):
         return None
 
     def schedule_completion_rr(self, job_id, rem_time):
-        if rem_time > self.quantum:  # job needs to be interrupted at least once
+        if (
+            rem_time > self.quantum
+        ):  # job needs to be interrupted at least once
             self.schedule(self.quantum, CompletionRR(job_id, True, rem_time))
         else:  # job can be executed till the end with no interruption
             self.schedule(rem_time, CompletionRR(job_id, False, rem_time))
@@ -250,13 +312,12 @@ class MMNRoundRobin(MMN):
 
 
 class ArrivalRR(Event):
-
     def __init__(self, job_id):
         self.id = job_id  # assigning the job id
 
     def process(self, sim: MMNRoundRobin):
         # set the arrival time of the job
-        sim.arrivals[self.id] = sim.t
+        sim.arrivals[self.id] = sim.time_of_simulation
 
         # deciding which queue will be checked with supermarket or not
         if sim.supermarket_mode:
@@ -267,10 +328,19 @@ class ArrivalRR(Event):
         # server associated with selected queue
         j, t = sim.running[queue_to_ins]
 
-        if j is None and t is None:  # if the server is free, put the job into execution
-            exec_time = sim.cd[self.id]  # get execution time for the specific job
-            sim.running[queue_to_ins] = (self.id, exec_time)  # tuple (job_id, time the system will need to serve it)
-            sim.schedule_completion_rr(self.id, exec_time)  # schedule its completion (or interruption)
+        if (
+            j is None and t is None
+        ):  # if the server is free, put the job into execution
+            exec_time = sim.cd[
+                self.id
+            ]  # get execution time for the specific job
+            sim.running[queue_to_ins] = (
+                self.id,
+                exec_time,
+            )  # tuple (job_id, time the system will need to serve it)
+            sim.schedule_completion_rr(
+                self.id, exec_time
+            )  # schedule its completion (or interruption)
         else:
             # a job that when first arrives is inserted in the queue has no exec_time yet
             sim.queue[queue_to_ins].append((self.id, sim.cd[self.id]))
@@ -279,16 +349,19 @@ class ArrivalRR(Event):
 
 
 class CompletionRR(Event):
-
     def __init__(self, job_id, interruption, rem_time):
         self.id = job_id  # assigning the job id
         self.interruption = interruption  # flag to indicate if the completion event is an interruption
         self.rem_time = rem_time  # remaining execution time of the job
 
     def process(self, sim: MMNRoundRobin):
-        job_executor = sim.get_job_executor_rr(self.id)  # first find server that the job is running on
+        job_executor = sim.get_job_executor_rr(
+            self.id
+        )  # first find server that the job is running on
         assert job_executor is not None  # if it is None, then it's an error
-        job_id, rem_time = sim.running[job_executor]  # retrieve job and remaining execution time
+        job_id, rem_time = sim.running[
+            job_executor
+        ]  # retrieve job and remaining execution time
 
         if self.interruption:  # job stopped due to interruption
             # update remaining executon time
@@ -298,31 +371,44 @@ class CompletionRR(Event):
             # pop job from the queue and execute it
             job, exec_t = sim.queue[job_executor].pop(0)
 
-            sim.running[job_executor] = (job, exec_t)  # job runs for the remaining time
-            sim.schedule_completion_rr(job, exec_t)   # schedule quantum interruption (or completion) for the new job
+            sim.running[job_executor] = (
+                job,
+                exec_t,
+            )  # job runs for the remaining time
+            sim.schedule_completion_rr(
+                job, exec_t
+            )  # schedule quantum interruption (or completion) for the new job
         else:  # job finished before quantum of time assigned
             # set the completion time of the running job
-            sim.completions[self.id] = sim.t
+            sim.completions[self.id] = sim.time_of_simulation
 
-            if len(sim.queue[job_executor]) > 0:  # server has other jobs waiting to be executed
+            if (
+                len(sim.queue[job_executor]) > 0
+            ):  # server has other jobs waiting to be executed
                 # get a job from the queue
                 pop_target = job_executor  # deciding from which queue we'll extract the next job
-                job_id, exec_t = sim.queue[pop_target].pop(0)  # popping a task from the start of the queue
-                sim.running[job_executor] = (job_id, exec_t)  # job runs for the remaining time
-                sim.schedule_completion_rr(job_id, exec_t)  # schedule quantum interruption (or completion)
-                                                            # for the new job
+                job_id, exec_t = sim.queue[pop_target].pop(
+                    0
+                )  # popping a task from the start of the queue
+                sim.running[job_executor] = (
+                    job_id,
+                    exec_t,
+                )  # job runs for the remaining time
+                sim.schedule_completion_rr(
+                    job_id, exec_t
+                )  # schedule quantum interruption (or completion)
+                # for the new job
             else:
-                sim.running[job_executor] = (None, None)   # server is free
+                sim.running[job_executor] = (None, None)  # server is free
 
 
 class Arrival(Event):
-
     def __init__(self, job_id):
         self.id = job_id  # assigning the job id
 
     def process(self, sim: MMNImpl):
         # set the arrival time of the job
-        sim.arrivals[self.id] = sim.t
+        sim.arrivals[self.id] = sim.time_of_simulation
         # if there is no running job, assign the incoming one and schedule its completion
         if not sim.supermarket_mode:
             insert_target = randrange(sim.n)
@@ -342,19 +428,24 @@ class Arrival(Event):
 
 
 class Completion(Event):
-
     def __init__(self, job_id):
         self.id = job_id  # currently unused, might be useful when extending
 
     def process(self, sim: MMNImpl):
-        job_executor = sim.get_job_executor(self.id)  # first find server that the job is running on
+        job_executor = sim.get_job_executor(
+            self.id
+        )  # first find server that the job is running on
         assert job_executor is not None  # if it is None, then it's an error
         # set the completion time of the running job
-        sim.completions[self.id] = sim.t
-        if len(sim.queue[job_executor]) > 0:  # server has other jobs waiting to be executed
+        sim.completions[self.id] = sim.time_of_simulation
+        if (
+            len(sim.queue[job_executor]) > 0
+        ):  # server has other jobs waiting to be executed
             # get a job from the queue
-            pop_target = job_executor   # deciding from which queue we'll extract the next job
-            job_id = sim.queue[pop_target].pop(0)  # popping a task from the start of the queue
+            pop_target = job_executor  # deciding from which queue we'll extract the next job
+            job_id = sim.queue[pop_target].pop(
+                0
+            )  # popping a task from the start of the queue
             sim.running[pop_target] = job_id  # put the task into execution
             # schedule its completion
             sim.schedule_completion(job_id)
@@ -363,13 +454,12 @@ class Completion(Event):
 
 
 class Log(Event):
-
     def __init__(self, period):
         self.period = period
 
     def process(self, sim: MMNImpl):
         # registering queue lengths
-        sim.register_queue_lengths(sim.t)
+        sim.register_queue_lengths(sim.time_of_simulation)
         # scheduling the event in order to be periodic (so same period as this one)
         sim.schedule(self.period, Log(self.period))
 
@@ -400,14 +490,23 @@ def get_all_qlengths(queue_distr):
 # plots the graph lengths - fraction of queues with at least that size
 def plot_supermarket_graphs(queue_distr, n_queues, sample_dim, lambd):
     points = get_all_qlengths(queue_distr)
-    percs = [fraction_of_queues_of_length(min_l, queue_distr, n_queues) for min_l in points]
+    percs = [
+        fraction_of_queues_of_length(min_l, queue_distr, n_queues)
+        for min_l in points
+    ]
 
     plt.plot(points, percs, label="Supermarket model")
     plt.xlabel("Queue length")
     plt.ylabel("Fraction of queues with at least that size")
-    title = "Supermarket model with " + str(n_queues) + " queues, "\
-            + str(sample_dim) + " as sample dimension and " + str(lambd) + \
-            " as lambda"
+    title = (
+        "Supermarket model with "
+        + str(n_queues)
+        + " queues, "
+        + str(sample_dim)
+        + " as sample dimension and "
+        + str(lambd)
+        + " as lambda"
+    )
     plt.title(title)
     plt.grid()
     plt.show()
@@ -415,19 +514,25 @@ def plot_supermarket_graphs(queue_distr, n_queues, sample_dim, lambd):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--lambd', type=float, default=0.7)
-    parser.add_argument('--mu', type=float, default=2.0)
-    parser.add_argument('--max-t', type=float, default=100000)
+    parser.add_argument("--lambd", type=float, default=0.7)
+    parser.add_argument("--mu", type=float, default=2.0)
+    parser.add_argument("--max-t", type=float, default=100000)
     # parser.add_argument('--seed', type=int, default=10)
-    parser.add_argument('--n', type=int, default=10)
+    parser.add_argument("--n", type=int, default=10)
 
     # needed to set parameter d (sample dimension for supermarket model choice of the queue)
-    parser.add_argument('--d', type=int, default=1)
-    parser.add_argument('--csv', help="sim.arrivals[self.id] = sim.t", default="report.csv")
-    parser.add_argument('--csv-rr', help="report for round robin", default="report_rr.csv")
+    parser.add_argument("--d", type=int, default=1)
+    parser.add_argument(
+        "--csv",
+        help="sim.arrivals[self.id] = sim.time_of_simulation",
+        default="report.csv",
+    )
+    parser.add_argument(
+        "--csv-rr", help="report for round robin", default="report_rr.csv"
+    )
 
     # introduce additional parameters for distinguish between using weibull or exponential distribution
-    parser.add_argument('--weibull', type=float, required=False)
+    parser.add_argument("--weibull", type=float, required=False)
     args = parser.parse_args()
 
     weibull_shape = args.weibull if args.weibull is not None else -1
@@ -437,5 +542,5 @@ def main():
     my_simualtion.simulate(args.max_t, weibull_shape, args.csv)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
