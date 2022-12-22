@@ -56,9 +56,7 @@ class Backup(Simulation):
 
         # flag that allows nodes to perform multiple downloads and uploads at the same time
         self.parallel_up_down = parallel_up_down
-        # self.max_node_dw = 0
         self.dw_bw_wasted = {}  # map time - average download bandwidth wasted by the nodes
-        #self.max_node_up = 0
         self.up_bw_wasted = {}  # map time - average upload bandwidth wasted by the nodes
 
         # map of preestablished events used for simulation purpose
@@ -90,35 +88,11 @@ class Backup(Simulation):
 
         # we take into account only those nodes that are online and that are downloading something
         l_down = [node.available_bw_download for node in self.nodes if node.online
-                and len(node.current_downloads.values()) > 0]
+                  and len(node.current_downloads.values()) > 0]
 
         # registering average upload/download bandwidth waste for given time
         self.up_bw_wasted[time] = sum(l_up) / len(l_up) if len(l_up) > 0 else 0
         self.dw_bw_wasted[time] = sum(l_down) / len(l_down) if len(l_down) > 0 else 0
-
-    # plotting
-    def plot_wasted_bw(self, plt):
-
-        points1 = list(self.up_bw_wasted.keys())
-        values1 = self.up_bw_wasted.values()
-
-        points2 = list(self.dw_bw_wasted.keys())
-        values2 = self.dw_bw_wasted.values()
-
-        t = "single" if not self.parallel_up_down else "parallel"
-        plt.suptitle("Average wasted bandwidth over time with " + t +
-                     " uploads and downloads")
-
-        plt.subplot(1, 2, 1)
-        plt.title("Average wasted upload bandwidth")
-        plt.plot(points1, values1)
-        plt.grid()
-        plt.subplot(1, 2, 2)
-        plt.title("Average wasted download bandwidth")
-        plt.plot(points2, values2)
-
-        plt.grid()
-        # plt.show()
 
     def schedule_transfer(self, uploader: 'Node', downloader: 'Node', block_id: int, restore: bool):
         """Helper function called by `Node.schedule_next_upload` and `Node.schedule_next_download`.
@@ -168,7 +142,7 @@ class Backup(Simulation):
 
 class BackupSim:
 
-    def __init__(self, max_t, nodes, plot_file):
+    def __init__(self, max_t, nodes):
         self.fails = {}
 
         # calculating needed mean
@@ -180,21 +154,18 @@ class BackupSim:
         for node in nodes:
             self.fails[node] = exp_rv(node.average_lifetime)
 
-        # offlines occur with avergae lifetime as the mean
+        # offlines occur with average lifetime as the mean
         self.offlines = self.init_list(max_t, avg_lt)
-        # fails occur with avergae lifetime as the mean
+        # fails occur with average lifetime as the mean
         self.fails_after_recover = self.init_list(max_t, avg_lt)
-        # onlines occur with avergae downtime as the mean
+        # onlines occur with average downtime as the mean
         self.onlines = self.init_list(max_t, avg_dt)
-        # recovers occur with avergae recover time as the mean
+        # recovers occur with average recover time as the mean
         self.recovers = self.init_list(max_t, avg_rt)
 
+        # configuration params to show in the plots
         info_dict = {
             "number": (len(nodes), None),
-            # "n": (nodes[0].n, None),
-            # "k": (nodes[0].k, None),
-            # "data_size": (nodes[0].data_size, format_size),
-            # "storage_size": (nodes[0].storage_size, format_size),
             "upload_speed": (nodes[0].upload_speed, format_size),
             "download_speed": (nodes[0].download_speed, format_size),
             "average_uptime": (nodes[0].average_uptime, format_timespan),
@@ -207,13 +178,14 @@ class BackupSim:
         normal_sim = Backup(nodes, False, self.fails, self.fails_after_recover, self.onlines, self.offlines,
                             self.recovers)
         extended_sim = Backup(nodes, True, self.fails, self.fails_after_recover, self.onlines, self.offlines,
-                            self.recovers)
+                              self.recovers)
         normal_sim.run(max_t)
         extended_sim.run(max_t)
 
         # plotting results
+        # bandwidth is represented in MiB
         points1 = list(normal_sim.up_bw_wasted.keys())
-        values1 = [val / pow(10, 6) for val in normal_sim.up_bw_wasted.values()]  # bandwidth is represented in MiB
+        values1 = [val / pow(10, 6) for val in normal_sim.up_bw_wasted.values()]
 
         points2 = list(normal_sim.dw_bw_wasted.keys())
         values2 = [val / pow(10, 6) for val in normal_sim.dw_bw_wasted.values()]
@@ -258,8 +230,6 @@ class BackupSim:
         plt.gcf().text(0.10, 0.90, text2, fontsize=8, bbox=props)
         fig.tight_layout()
         plt.show()
-        #if plot_file is not None:
-        #    plt.savefig(plot_file)
 
     # utility that returns a list of random values having the specified mean generated with exponential distribution
     def init_list(self, max_t, mean):
@@ -361,7 +331,8 @@ class Node:
         assert self.online
 
         # if i don't have available bandiwidth for upload, i can't perform it
-        if self.available_bw_upload == 0 or (not sim.parallel_up_down and len(list(self.current_uploads.keys())) > 0):
+        if self.available_bw_upload == 0 or \
+                (not sim.parallel_up_down and len(list(self.current_uploads.keys())) > 0):
             return False
 
         # first find if we have a backup that a remote node needs
@@ -406,7 +377,7 @@ class Node:
             if (peer is not self and peer.online and peer not in remote_owners and constraint
                     and peer.free_space >= self.block_size):
                 sim.schedule_transfer(self, peer, block_id, False)  # scheduling the uploading of the block by this node
-                return True                                         # and the downloading from the peer
+                return True  # and the downloading from the peer
         return False  # didn't find either a backup or a block to restore
 
     def schedule_next_uploads(self, sim: Backup):
@@ -419,9 +390,6 @@ class Node:
             if not self.schedule_next_upload(sim):
                 break
             counter = counter + 1
-
-        #sim.max_node_up = len(self.current_uploads.values()) if len(self.current_uploads.values()) > sim.max_node_up \
-        #    else sim.max_node_up
         sim.log_info(self.name + " scheduled " + str(counter) + " new uploads")  # logs new uploads scheduled
         sim.log_info(self.name + " is executing " + str(len(self.current_uploads.values())) + " uploads")
 
@@ -433,7 +401,8 @@ class Node:
         assert self.online
 
         # if i don't have available bandiwidth for download, i can't perform it
-        if self.available_bw_download == 0 or (not sim.parallel_up_down and len(list(self.current_downloads.keys())) > 0):
+        if self.available_bw_download == 0 or \
+                (not sim.parallel_up_down and len(list(self.current_downloads.keys())) > 0):
             return False
 
         # first find if we have a missing block to restore
@@ -487,12 +456,8 @@ class Node:
             if not self.schedule_next_download(sim):
                 break
             counter = counter + 1
-
-        #sim.max_node_dw = len(self.current_downloads.values()) if len(self.current_downloads.values()) > sim.max_node_dw \
-        #    else sim.max_node_dw
         sim.log_info(self.name + " scheduled " + str(counter) + " new downloads")  # logs new downloads scheduled
         sim.log_info(self.name + " is executing " + str(len(self.current_downloads.values())) + " downloads")
-
 
     def __hash__(self):
         """Function that allows us to have `Node`s as dictionary keys or set items.
@@ -738,17 +703,6 @@ class BlockRestoreComplete(TransferComplete):
         if sum(owner.local_blocks) == owner.k:  # we have exactly k local blocks, we have all of them then
             owner.local_blocks = [True] * owner.n
 
-def get_next_plot_name(dirname):
-    if not os.path.exists(dirname):
-        os.makedirs(dirname)
-
-    count = 0
-    while True:
-        filename = dirname + "/plot" + str(count) + ".jpg"
-        if not os.path.isfile(filename):
-            return filename
-        count += 1
-
 
 def main():
     parser = argparse.ArgumentParser()
@@ -756,7 +710,6 @@ def main():
     parser.add_argument("--max-t", default="50 years")
     parser.add_argument("--seed", help="random seed")
     parser.add_argument("--verbose", action='store_true', default=True)
-    parser.add_argument('--plots-dir', type=str, default="./storage_plots")
     args = parser.parse_args()
 
     if args.seed:
@@ -784,7 +737,7 @@ def main():
         # the `callable(p1, p2, *args)` idiom is equivalent to `callable(p1, p2, args[0], args[1], ...)
         nodes.extend(Node(f"{node_class}-{i}", *cfg) for i in range(class_config.getint('number')))
 
-    sims = BackupSim(parse_timespan(args.max_t), nodes, get_next_plot_name(args.plots_dir))
+    sims = BackupSim(parse_timespan(args.max_t), nodes)
     # sim = Backup(nodes, args.extended)
     # sim.run(parse_timespan(args.max_t))
 

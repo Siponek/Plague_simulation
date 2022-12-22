@@ -9,7 +9,6 @@ from random import expovariate, randrange, sample, seed, weibullvariate
 from discrete_event_sim_redacted import Simulation, Event
 from matplotlib import pyplot as plt
 
-
 # To use weibull variates, for a given set of parameter do something like
 # from weibull import weibull_generator
 # gen = weibull_generator(shape, mean)
@@ -91,7 +90,7 @@ class MMNImpl(MMN):
         self.sample_dim = d  # sample dimension for supermarket scheduling
         self.queue_len_distr = {}  # mapping time to list of queues' lengths
         self.schedule_arrival(0)
-        self.schedule(0, Log(1))   # logging initial queue situation
+        self.schedule(0, Log(1))  # logging initial queue situation
 
     # returns the index of the server that is executing job_id if it is found, None otherwise
     def get_job_executor(self, job_id):
@@ -215,6 +214,7 @@ class MMNRoundRobinSim:
                     writer.writerow([lambd, mu, max_t, system.quantum, d, n,
                                      quantum_times[system.quantum], shape])
 
+    # plot relationship between time quantum and average time spent by a job in the system
     def plot_time_quantum(self, quantum_times, info_dict):
         quantums = quantum_times.keys()
         avg_times = quantum_times.values()
@@ -242,7 +242,6 @@ class MMNRoundRobinSim:
 
         if info_dict["plot_file"] is not None:
             plt.savefig(info_dict["plot_file"])
-        # plt.show()
 
 
 class MMNRoundRobin(MMN):
@@ -337,7 +336,7 @@ class CompletionRR(Event):
             job, exec_t = sim.queue[job_executor].pop(0)
 
             sim.running[job_executor] = (job, exec_t)  # job runs for the remaining time
-            sim.schedule_completion_rr(job, exec_t)   # schedule quantum interruption (or completion) for the new job
+            sim.schedule_completion_rr(job, exec_t)  # schedule quantum interruption (or completion) for the new job
         else:  # job finished before quantum of time assigned
             # set the completion time of the running job
             sim.completions[self.id] = sim.t
@@ -350,7 +349,7 @@ class CompletionRR(Event):
                 # schedule quantum interruption (or completion) for the new job
                 sim.schedule_completion_rr(job_id, exec_t)
             else:
-                sim.running[job_executor] = (None, None)   # server is free
+                sim.running[job_executor] = (None, None)  # server is free
 
 
 class Arrival(Event):
@@ -390,7 +389,7 @@ class Completion(Event):
         # set the completion time of the running job
         sim.completions[self.id] = sim.t
         if len(sim.queue[job_executor]) > 0:  # server has other jobs waiting to be executed
-            pop_target = job_executor   # deciding from which queue we'll extract the next job
+            pop_target = job_executor  # deciding from which queue we'll extract the next job
             job_id = sim.queue[pop_target].pop(0)  # popping a task from the start of the queue
             sim.running[pop_target] = job_id  # put the task into execution
             # schedule its completion
@@ -405,7 +404,6 @@ class Log(Event):
         self.period = period
 
     def process(self, sim: MMNImpl):
-        # print(f"{sim.t} -> log")
         # registering queue lengths
         sim.register_queue_lengths(sim.t)
         # scheduling the event in order to be periodic (so same period as this one)
@@ -445,8 +443,8 @@ def plot_supermarket_graphs(queue_distr, n_queues, sample_dim, lambd, plot_file,
     plt.ylabel("Fraction of queues with at least that size")
     title = "Supermarket model"
     text = "lambda = " + str(lambd) + "\nmu = " + str(mu) + \
-        "\nnumber of servers = " + str(n_queues) + "\nsample dimension = " + \
-        str(sample_dim)
+           "\nnumber of servers = " + str(n_queues) + "\nsample dimension = " + \
+           str(sample_dim)
 
     # textbox properties
     props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
@@ -457,9 +455,9 @@ def plot_supermarket_graphs(queue_distr, n_queues, sample_dim, lambd, plot_file,
 
     if plot_file is not None:
         plt.savefig(plot_file)
-    # plt.show()
 
 
+# utility function to get next plot filename
 def get_next_plot_name(dirname):
     if not os.path.exists(dirname):
         os.makedirs(dirname)
@@ -477,7 +475,7 @@ def get_next_plot_name(dirname):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--lambd', type=float, default=0.7)
-    parser.add_argument('--mu', type=float, default=2.0)
+    parser.add_argument('--mu', type=float, default=1.0)
     parser.add_argument('--max-t', type=float, default=100000)
     parser.add_argument('--seed', type=int, required=False)
     parser.add_argument('--n', type=int, default=10)
@@ -502,7 +500,7 @@ def main():
     if args.rr == 1:
         print("Starting new Round Robin simulation")
         my_simulation = MMNRoundRobinSim(args.lambd, args.mu, args.n, args.d, args.max_t, weibull_shape, args.csv_rr,
-                            get_next_plot_name(args.plots_dir + "/extended"))
+                                         get_next_plot_name(args.plots_dir + "/extended"))
         print("Round Robin simulation finished")
     else:
         print("Starting new Supermarket simulation")
